@@ -1,0 +1,37 @@
+#version 450
+
+layout (binding = 0, rgba8) uniform writeonly image3D outputImage;
+
+layout (local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+float magnitude(in vec3 vector) {
+    return sqrt(vector.x*vector.x+vector.y*vector.y+vector.z*vector.z);
+}
+
+float distanceToRing(vec3 point, vec2 ringCenter, float ringRadius, float ringThickness) {
+    // Project point onto XY plane
+    vec2 p = point.xy;
+
+    // Radial distance from point to center
+    float distToCenter = length(p - ringCenter);
+
+    // Inner and outer radius
+    float rInner = ringRadius - ringThickness;
+    float rOuter = ringRadius + ringThickness;
+
+    // If point is between inner and outer radius, distance is 0 (inside the ring)
+    if (distToCenter >= rInner && distToCenter <= rOuter) {
+        return 0.0;
+    }
+
+    // Otherwise, distance to nearest edge
+    return min(abs(distToCenter - rInner), abs(distToCenter - rOuter));
+}
+
+void main() {
+    float distance2DA = distanceToRing(gl_GlobalInvocationID/255.0f, vec2(0.4f, 0.4f), 0.3f, 0.02f);
+    float distance3DA = sqrt(distance2DA*distance2DA+0.5f*pow(gl_GlobalInvocationID.z/255.0f-0.2f, 2));
+    float distance2DB = distanceToRing(gl_GlobalInvocationID/255.0f, vec2(0.6f, 0.6f), 0.3f, 0.02f);
+    float distance3DB = sqrt(distance2DB*distance2DB+0.5f*pow(gl_GlobalInvocationID.z/255.0f-0.8f, 2));
+    imageStore(outputImage, ivec3(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y, gl_GlobalInvocationID.z), vec4(gl_GlobalInvocationID/255.0f, max(1.0f-distance3DA*10.0f, 0.0f)+max(1.0f-distance3DB*10.0f, 0.0f)));
+}
