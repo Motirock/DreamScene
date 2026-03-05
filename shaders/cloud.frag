@@ -18,10 +18,9 @@ layout(location = 0) out vec4 outColor;
 const float e = 2.71828f;
 const float MAX_DISTANCE = 2000.0f;
 
-float radius = 500.0f;
-
-const vec3 lowerBounds = vec3(1000.0f, -500.0f, 0.0f);
-const vec3 upperBounds = vec3(2000.0f, 500.0f, 1000.0f);
+const vec3 lowerBounds = vec3(200.0f, -500.0f, -400.0f);
+const vec3 upperBounds = vec3(1200.0f, 500.0f, 600.0f);
+const vec3 boundsSizes = vec3(1000.0f);
 
 float exitRayAABB(vec3 rayOrigin, vec3 rayDirection, vec3 lowerBounds, vec3 upperBounds) {
     vec3 tMin = (lowerBounds - rayOrigin) / rayDirection;
@@ -50,10 +49,10 @@ float exitRayAABB(vec3 rayOrigin, vec3 rayDirection, vec3 lowerBounds, vec3 uppe
 void main() {
     vec3 rayDirection = normalize(worldPosition - ubo.cameraPos);
     vec3 rayOrigin = worldPosition;
-    vec3 rayPosition = rayOrigin;
+    vec3 rayPosition = rayOrigin+vec3(0.0f, 0.0f, -20+40.0f*cos(ubo.time/5.0f));
     float distanceTraveled = 0.0f;
     int steps = 0;
-    float stepSize = 50.0f;
+    float minStepSize = 50.0f;
 
     float endDistance = exitRayAABB(rayOrigin, rayDirection, lowerBounds, upperBounds);
 
@@ -70,20 +69,27 @@ void main() {
     while (distanceTraveled < min(MAX_DISTANCE, endDistance)) {
         vec3 noiseCoordinates = (rayPosition-lowerBounds)/1000.0f;
         vec4 localValue = texture(noiseSamplers[0], noiseCoordinates);
-        float density = pow(min(localValue.w, 0.5f), 2);
 
-        float transparencyChange = transparency*density/1000.0f*stepSize*10;
+        if (localValue.w > 0.01f) {
+            float transparencyChange = transparency*min(0.01f/(localValue.w+0.0001f), 1.0f)/1000.0f*minStepSize*10;
         
-        transparency -= transparencyChange;
-        color += localValue.xyz*transparencyChange;
-        // color = vec3(1.0f, 0.0f, 0.0f);
-        if (transparency <= 0.05f) {
-            transparency = 0.0f;
-            break;
+            transparency -= transparencyChange;
+            color += localValue.xyz*transparencyChange;
+
+            if (transparency <= 0.05f) {
+                transparency = 0.0f;
+                break;
+            }
+
+            vec3 nextStep = boundsSizes * localValue.w;
+            rayPosition += vec3(nextStep.x*rayDirection.x, nextStep.y*rayDirection.y, nextStep.z*rayDirection.z);
+        }
+        else {
+            rayPosition += rayDirection * minStepSize;
+            distanceTraveled += minStepSize;
         }
 
-        rayPosition += rayDirection * stepSize;
-        distanceTraveled += stepSize;
+        steps++;
     }
 
     color = color/(max(color.x, max(color.y, color.z)))*vec3(abs(sin(ubo.time/3.0f)), abs(cos(ubo.time/5.0f)), 10*abs(sin(ubo.time/10.0f)));

@@ -29,9 +29,11 @@ float distanceToRing(vec3 point, vec2 ringCenter, float ringRadius, float ringTh
 }
 
 void main() {
-    float distance2DA = distanceToRing(gl_GlobalInvocationID/255.0f, vec2(0.4f, 0.4f), 0.3f, 0.02f);
-    float distance3DA = sqrt(distance2DA*distance2DA+0.5f*pow(gl_GlobalInvocationID.z/255.0f-0.2f, 2));
-    float distance2DB = distanceToRing(gl_GlobalInvocationID/255.0f, vec2(0.6f, 0.6f), 0.3f, 0.02f);
-    float distance3DB = sqrt(distance2DB*distance2DB+0.5f*pow(gl_GlobalInvocationID.z/255.0f-0.8f, 2));
-    imageStore(outputImage, ivec3(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y, gl_GlobalInvocationID.z), vec4(gl_GlobalInvocationID/255.0f, max(1.0f-distance3DA*10.0f, 0.0f)+max(1.0f-distance3DB*10.0f, 0.0f)));
+    // float distance2DA = distanceToRing(gl_GlobalInvocationID/255.0f, vec2(0.4f, 0.4f), 0.3f, 0.05f);
+    // float distance3DA = sqrt(distance2DA*distance2DA+0.5f*pow(gl_GlobalInvocationID.z/255.0f-0.2f, 2));
+    // float distance2DB = distanceToRing(gl_GlobalInvocationID/255.0f, vec2(0.6f, 0.6f), 0.3f, 0.10f);
+    // float distance3DB = sqrt(distance2DB*distance2DB+0.5f*pow(gl_GlobalInvocationID.z/255.0f-0.8f, 2));
+    // imageStore(outputImage, ivec3(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y, gl_GlobalInvocationID.z), vec4(gl_GlobalInvocationID/255.0f, min(max(distance3DA, 0.0f), max(distance3DB, 0.0f))));
+    float distance = magnitude(gl_GlobalInvocationID/255.0f-vec3(0.5f))-0.2f;
+    imageStore(outputImage, ivec3(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y, gl_GlobalInvocationID.z), vec4(gl_GlobalInvocationID/255.0f, max(distance, 0.0f)));
 }

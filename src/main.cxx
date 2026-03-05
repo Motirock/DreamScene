@@ -345,6 +345,116 @@ private:
         createSyncObjects();
     }
 
+    void processGamepadInput(int gamepadID, glm::vec2 &left, glm::vec2 &right, float &leftTrigger, float &rightTrigger, std::vector<bool> &buttons) {
+    	GLFWgamepadstate state;
+    	if (glfwGetGamepadState(gamepadID, &state)) {
+        	//Axes (Left stick x, Left stick y, left trigger, right stick x, right stick y, right trigger) (weird order -_-)
+        	const float *axes = state.axes;
+        	for (int i = 0; i < GLFW_GAMEPAD_AXIS_LAST; ++i) {
+            	switch(i) {
+                	case 0:
+                    	left.x = axes[i];
+                    	break;
+                	case 1:
+                    	left.y = axes[i];
+                    	break;
+                	case 2:
+                    	leftTrigger = axes[i];
+                    	break;
+                	case 3:
+                    	right.x = axes[i];
+                    	break;
+                	case 4:
+                    	right.y = axes[i];
+                    	break;
+                	case 5:
+                    	rightTrigger = axes[i];
+                    	break;
+            	}
+        	}
+
+        	//Buttons
+        	const unsigned char *gamepadButtons = state.buttons;
+        	for (int i = 0; i < GLFW_GAMEPAD_BUTTON_LAST; ++i) {
+            	buttons.push_back(gamepadButtons[i] == GLFW_PRESS);
+        	}
+    	} else {
+        	std::cout << "Gamepad " << gamepadID << " is not active or not mapped!\n";
+    	}
+	}
+    //todo! make gamepad input have struct like RCInput
+
+    struct RCInput {
+        bool exists;
+        float throttle;
+        float yaw;
+        float roll;
+        float pitch;
+    } rcInput;
+    void processRCInput(int rcID) {
+    	int axisCount;
+
+        const float *axes = glfwGetJoystickAxes(rcID, &axisCount);
+        for (int i = 0; i < axisCount; ++i) {
+            switch(i) {
+                case 0:
+                    rcInput.roll = axes[i];
+                    break;
+                case 1:
+                    rcInput.pitch = axes[i];
+                    break;
+                case 2:
+                    rcInput.throttle = axes[i];
+                    break;
+                case 4:
+                    rcInput.yaw = axes[i];
+                    break;
+            }
+        }
+	}
+
+	void processJoystickInput(int joystickID, glm::vec2 &left, glm::vec2 &right, float &leftTrigger, float &rightTrigger, std::vector<bool> &buttons) {
+    	int axisCount, buttonCount;
+
+    	//Axes (Left stick x, Left stick y, left trigger, right stick x, right stick y, right trigger) (weird order -_-)
+    	const float *axes = glfwGetJoystickAxes(joystickID, &axisCount);
+    	for (int i = 0; i < axisCount; ++i) {
+        	switch(i) {
+            	case 0:
+                	left.x = axes[i];
+                	break;
+            	case 1:
+                	left.y = axes[i];
+                	break;
+            	case 2:
+                	leftTrigger = axes[i];
+                	break;
+            	case 3:
+                	right.x = axes[i];
+                	break;
+            	case 4:
+                	right.y = axes[i];
+                	break;
+            	case 5:
+                	rightTrigger = axes[i];
+                	break;
+        	}
+    	}
+
+    	//Buttons
+    	const unsigned char *joystickButtons = glfwGetJoystickButtons(joystickID, &buttonCount);
+    	for (int i = 0; i < buttonCount; ++i) {
+        	buttons.push_back(joystickButtons[i] == GLFW_PRESS);
+    	}
+	}
+
+	//Controller
+    enum ControllerType {
+        GAMEPAD,
+        JOYSTICK,
+        RC
+    } controllerType = RC;
+
     float mouseX = 0.0f, mouseY = 0.0f;
     float previousMouseX = mouseX, previousMouseY = mouseY;
     bool mouseLeftPressed = false, mouseRightPressed = false;
@@ -353,76 +463,178 @@ private:
     bool lockedIn = false;
     bool cursorJustEntered = false;
     bool grassToggled = true;
+    bool fPressed = false, floatMode = true;
     void input() {
         float speed = this->speed;
-        float turningSensitivity = this->turningSensitivity*FOV/90.0f;
-        if (glfwGetKey(window, GLFW_KEY_CAPS_LOCK) == GLFW_PRESS)
-            speed = this->speed*50.0f;
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-            cameraPosition += viewDirection*speed*(1.0f/TPS);
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-            cameraPosition -= viewDirection*speed*(1.0f/TPS);
-        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-            cameraPosition.z += speed*(1.0f/TPS);
+    	float turningSensitivity = this->turningSensitivity*FOV/90.0f;
+        float controllerSensitivityFactor = 10.0f;
+
+        float moveForwardFactor = 0.0f;
+        float moveRightFactor = 0.0f;
+        float moveUpFactor = 0.0f;
+
+        float lookUpFactor = 0.0f;
+        float lookRightFactor = 0.0f;
+
+    	glm::vec2 left;
+    	glm::vec2 right;
+    	float leftTrigger;
+    	float rightTrigger;
+    	std::vector<bool> buttons;
+
+    	//Check for connected controllers
+    	for (int joystickID = GLFW_JOYSTICK_1; joystickID <= GLFW_JOYSTICK_LAST; ++joystickID) {
+        	if (glfwJoystickPresent(joystickID)) {
+            	// std::cout << "Joystick " << joystickID << " connected: "
+                    	// << glfwGetJoystickName(joystickID) << '\n';
+
+                switch(controllerType) {
+                    case GAMEPAD:
+                        processGamepadInput(joystickID, left, right, leftTrigger, rightTrigger, buttons);
+                        break;
+                    case JOYSTICK:
+                        processJoystickInput(joystickID, left, right, leftTrigger, rightTrigger, buttons);
+                        break;
+                    case RC:
+                        processRCInput(joystickID);
+                        break;
+
+                }
+
+                switch(controllerType) {
+                case GAMEPAD:
+                case JOYSTICK:
+                    if (left.x <= 0.1f && left.x >= -0.1f)
+                	    left.x = 0.0f;
+                    if (left.y <= 0.1f && left.y >= -0.1f)
+                        left.y = 0.0f;
+                
+                    if (right.x <= 0.1f && right.x >= -0.1f)
+                        right.x = 0.0f;
+                    if (right.y <= 0.1f && right.y >= -0.1f)
+                        right.y = 0.0f;
+
+                    moveForwardFactor = -left.y;
+                    moveRightFactor = left.x;
+                    moveUpFactor = 0.0f;
+
+                    lookUpFactor = -right.y*controllerSensitivityFactor;
+                    lookRightFactor = right.x*controllerSensitivityFactor;
+
+                    if (buttons.size() != 0 && !(buttons[0] && buttons[1])) {
+                        if (buttons[0])
+                            moveUpFactor = 1;
+                        if (buttons[1])
+                            moveUpFactor = -1;
+                    }
+                    break;
+
+                case RC:
+                    if (rcInput.yaw <= 0.1f && rcInput.yaw >= -0.1f)
+                	    rcInput.yaw = 0.0f;
+                    if (rcInput.throttle <= 0.1f && rcInput.throttle >= -0.1f)
+                        rcInput.throttle = 0.0f;
+                
+                    if (rcInput.roll <= 0.1f && rcInput.roll >= -0.1f)
+                        rcInput.roll = 0.0f;
+                    if (rcInput.pitch <= 0.1f && rcInput.pitch >= -0.1f)
+                        rcInput.pitch = 0.0f;
+
+                    moveForwardFactor = rcInput.throttle;
+                    moveRightFactor = rcInput.yaw;
+                    moveUpFactor = 0.0f;
+
+                    lookUpFactor = -rcInput.pitch*controllerSensitivityFactor;
+                    lookRightFactor = rcInput.roll*controllerSensitivityFactor;
+                }
+
+            	break;
+        	}
+    	}
+
+    	if (!(glfwGetKey(window, GLFW_KEY_W) && glfwGetKey(window, GLFW_KEY_S))) {
+        	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+            	moveForwardFactor = 1;
+        	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+            	moveForwardFactor = -1;
+    	}
+
+    	if (!(glfwGetKey(window, GLFW_KEY_A) && glfwGetKey(window, GLFW_KEY_D))) {
+        	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+            	moveRightFactor = -1;
+        	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+            	moveRightFactor = 1;
+    	}
+
+    	if (!(glfwGetKey(window, GLFW_KEY_UP) && glfwGetKey(window, GLFW_KEY_DOWN))) {
+        	if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS)
+            	lookUpFactor = 1;
+        	if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS)
+            	lookUpFactor = -1;
+    	}
+
+    	if (!(glfwGetKey(window, GLFW_KEY_LEFT) && glfwGetKey(window, GLFW_KEY_RIGHT))) {
+        	if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS)
+            	lookRightFactor = -1;
+        	if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS)
+            	lookRightFactor = 1;
+    	}
+
+    	if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
+        	speed = this->speed/5.0f;
         if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
-            cameraPosition.z -= speed*(1.0f/TPS);
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-            cameraPosition += glm::normalize(glm::vec3(
-                std::cos(glm::radians(-viewAngles.x+90))*std::cos(glm::radians(viewAngles.y)), 
-                std::sin(glm::radians(-viewAngles.x+90))*std::cos(glm::radians(viewAngles.y)), 
-                0))*speed*(1.0f/TPS);
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-            cameraPosition += glm::normalize(glm::vec3(
-                std::cos(glm::radians(-viewAngles.x-90))*std::cos(glm::radians(viewAngles.y)), 
-                std::sin(glm::radians(-viewAngles.x-90))*std::cos(glm::radians(viewAngles.y)), 
-                0))*speed*(1.0f/TPS);
+        	speed = this->speed*100.0f;
+    	cameraPosition += moveForwardFactor*viewDirection*speed*(1.0f/TPS);
+    	cameraPosition.z += moveUpFactor*speed*(1.0f/TPS);
+    	cameraPosition -= moveRightFactor*glm::normalize(glm::vec3(
+        	std::cos(glm::radians(-viewAngles.x+90))*std::cos(glm::radians(viewAngles.y)),
+        	std::sin(glm::radians(-viewAngles.x+90))*std::cos(glm::radians(viewAngles.y)),
+        	0))*speed*(1.0f/TPS);
 
-        //Mouseless turning
-        if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS)
-            viewAngles.y += turningSensitivity;
-        if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS)
-            viewAngles.y -= turningSensitivity;
-        if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS)
-            viewAngles.x -= turningSensitivity;
-        if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS)
-            viewAngles.x += turningSensitivity;
+    	//Mouseless turning
+    	viewAngles.y += lookUpFactor*turningSensitivity;
+    	viewAngles.x += lookRightFactor*turningSensitivity;
 
-        bool lockingIn = !lockedIn && glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS;
-        bool unlocking = lockedIn && glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
-        lockedIn = glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS;
+    	bool lockingIn = !lockedIn && glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS;
+    	bool unlocking = lockedIn && glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+    	lockedIn = glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS;
 
-        if (lockingIn)
-            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-        if (lockedIn && !lockingIn) {
-            viewAngles.x += (mouseX-previousMouseX)*turningSensitivity*swapChainExtent.width;
-            viewAngles.y -= (mouseY-previousMouseY)*turningSensitivity*swapChainExtent.height;
-        }
-        if (unlocking)
-            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    	if (lockingIn)
+        	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    	if (lockedIn && !lockingIn) {
+        	viewAngles.x += (mouseX-previousMouseX)*turningSensitivity*swapChainExtent.width;
+        	viewAngles.y -= (mouseY-previousMouseY)*turningSensitivity*swapChainExtent.height;
+    	}
+    	if (unlocking)
+        	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
-        if (scrollAmount > 0)
-            FOV -= 5.0f;
-        if (scrollAmount < 0)
-            FOV += 5.0f;
-        scrollAmount = 0;
-        if (FOV < 1.0f)
-            FOV = 1.0f;
-        if (FOV > 90.0f)    
-            FOV = 90.0f;
+    	if (scrollAmount > 0)
+        	FOV -= 2.0f;
+    	if (scrollAmount < 0)
+        	FOV += 2.0f;
+    	scrollAmount = 0;
+    	if (FOV < 1.0f)
+        	FOV = 1.0f;
+    	if (FOV > 90.0f)    
+        	FOV = 90.0f;
 
-        glm::vec3 viewDirection = glm::normalize(glm::vec3(
-            std::cos(glm::radians(-viewAngles.x))*std::cos(glm::radians(viewAngles.y)), 
-            std::sin(glm::radians(-viewAngles.x))*std::cos(glm::radians(viewAngles.y)), 
-            std::sin(glm::radians(viewAngles.y))
-        ));
+    	glm::vec3 viewDirection = glm::normalize(glm::vec3(
+        	std::cos(glm::radians(-viewAngles.x))*std::cos(glm::radians(viewAngles.y)),
+        	std::sin(glm::radians(-viewAngles.x))*std::cos(glm::radians(viewAngles.y)),
+        	std::sin(glm::radians(viewAngles.y))
+    	));
 
-        previousMouseX = mouseX;
-        previousMouseY = mouseY;
+    	previousMouseX = mouseX;
+    	previousMouseY = mouseY;
 
-        mouseLeftClicked = false;
-        mouseRightClicked = false;
+    	mouseLeftClicked = false;
+    	mouseRightClicked = false;
 
         grassToggled = glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS;
+
+        if (fPressed && glfwGetKey(window, GLFW_KEY_F) != GLFW_PRESS)
+            floatMode = !floatMode;
+        fPressed = glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS;
     }
 
     void mainLoop() {
@@ -1822,6 +2034,13 @@ private:
                 }
             }
         }
+        terrainVertices.push_back({{-100.0f, 100.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}});
+        terrainVertices.push_back({{100.0f, -100.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}});
+        terrainVertices.push_back({{100.0f, 100.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}});
+
+        terrainVertices.push_back({{-100.0f, 100.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}});
+        terrainVertices.push_back({{-100.0f, -100.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}});
+        terrainVertices.push_back({{100.0f, -100.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}});
 
         for (float x = 0; x < WORLD_X; x += 0.15f) {
             for (float y = 0; y < WORLD_Y; y += 0.15f) {
@@ -1842,8 +2061,8 @@ private:
         }
         
         //Bounds
-        float lx = 1000.0f, ly = -500.0f, lz = 0.0f;
-        float ux = 2000.0f, uy = 500.0f, uz = 1000.0f;
+        float lx = 200.0f, ly = -500.0f, lz = -400.0f;
+        float ux = 1200.0f, uy = 500.0f, uz = 600.0f;
 
         //-X Face (front)
         cloudVertices.push_back({{lx, ly, lz}});
@@ -2313,8 +2532,8 @@ private:
         renderPassInfo.renderArea.extent = swapChainExtent;
 
         std::array<VkClearValue, 2> clearValues{};
-        clearValues[0].color = {{0.5f, 0.75f, 0.95f, 1.0f}};
-        // clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+        // clearValues[0].color = {{0.5f, 0.75f, 0.95f, 1.0f}};
+        clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
         clearValues[1].depthStencil = {1.0f, 0};
 
         renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
